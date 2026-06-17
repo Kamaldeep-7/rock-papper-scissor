@@ -1,12 +1,15 @@
 import { io } from 'socket.io-client'
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
+const EXPLICIT_URL = import.meta.env.VITE_SERVER_URL
+const DEV_URL = 'http://localhost:3001'
 
 let socket = null
 
 export function getSocket() {
   if (!socket) {
-    socket = io(SERVER_URL, { autoConnect: true, transports: ['websocket', 'polling'] })
+    const url = EXPLICIT_URL || (import.meta.env.DEV ? DEV_URL : undefined)
+    const opts = { autoConnect: true, transports: ['websocket', 'polling'] }
+    socket = url ? io(url, opts) : io(opts)
   }
   return socket
 }

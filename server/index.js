@@ -3,7 +3,10 @@ import cors from 'cors'
 import { createServer } from 'node:http'
 import { Server } from 'socket.io'
 import { customAlphabet } from 'nanoid'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3001
 const KEY_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
 const generateKey = customAlphabet(KEY_ALPHABET, 6)
@@ -14,6 +17,12 @@ const VALID_CHOICES = new Set(Object.keys(BEATS))
 const app = express()
 app.use(cors())
 app.get('/health', (_req, res) => res.json({ ok: true }))
+
+const distPath = path.join(__dirname, '..', 'dist')
+app.use(express.static(distPath))
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'))
+})
 
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
