@@ -1,21 +1,37 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ChoiceCard from '../components/ChoiceCard.jsx'
 import ScoreBox from '../components/ScoreBox.jsx'
 import ChoiceButtons from '../components/ChoiceButtons.jsx'
+import Countdown from '../components/Countdown.jsx'
+import VictoryScreen from '../components/VictoryScreen.jsx'
+import ReactionsBar from '../components/ReactionsBar.jsx'
+import MuteToggle from '../components/MuteToggle.jsx'
+import { getVariant } from './constants.js'
+import { sounds } from '../audio.js'
+import { recordRound, recordMatch } from '../storage.js'
 import { getSocket } from '../socket.js'
 
 export default function FriendGame({ session, onExit }) {
-  const { key: roomKey, you, players } = session
+  const { key: roomKey, you, players, names, variantId, matchLength } = session
+  const variant = useMemo(() => getVariant(variantId), [variantId])
   const opponentId = players.find((id) => id !== you)
 
+  const myName = names[you] || 'You'
+  const oppName = names[opponentId] || 'Friend'
+
+  const [phase, setPhase] = useState('picking')
   const [myChoice, setMyChoice] = useState(null)
   const [oppPicked, setOppPicked] = useState(false)
   const [reveal, setReveal] = useState(null)
   const [scores, setScores] = useState({ [you]: 0, [opponentId]: 0 })
   const [round, setRound] = useState(1)
   const [opponentLeft, setOpponentLeft] = useState(false)
+  const [matchOutcome, setMatchOutcome] = useState(null)
+  const [rematch, setRematch] = useState({ me: false, opp: false })
+  const [myReaction, setMyReaction] = useState(null)
+  const [oppReaction, setOppReaction] = useState(null)
 
-  const isWaiting = !!myChoice && !reveal
+  const pendingRevealRef = useRef(null)
 
   useEffect(() => {
     const socket = getSocket()
@@ -24,38 +40,100 @@ export default function FriendGame({ session, onExit }) {
       setOppPicked(true)
     }
     function onReveal({ choices, winner, scores: newScores }) {
-      setReveal({
+      const data = {
         mine: choices[you],
         opp: choices[opponentId],
         outcome: winner == null ? 'draw' : winner === you ? 'win' : 'lose',
-      })
-      setScores(newScores)
+        scores: newScores,
+      }
+      pendingRevealRef.current = data
+      setPhase('countdown')
     }
     function onOpponentLeft() {
       setOpponentLeft(true)
+    }
+    function onReaction({ emoji }) {
+      const r = { id: Date.now() + Math.random(), emoji }
+      setOppReaction(r)
+      setTimeout(() => setOppReaction((cur) => (cur && cur.id === r.id ? null : cur)), 2000)
+    }
+    function onMatchReset({ scores: newScores }) {
+      setScores(newScores)
+      setMatchOutcome(null)
+      setRematch({ me: false, opp: false })
+      setReveal(null)
+      setMyChoice(null)
+      setOppPicked(false)
+      setPhase('picking')
+      setRound(1)
+    }
+    function onRematchUpdate({ requesters }) {
+      setRematch({
+        me: requesters.includes(you),
+        opp: requesters.includes(opponentId),
+      })
     }
 
     socket.on('opponent-picked', onOpponentPicked)
     socket.on('reveal', onReveal)
     socket.on('opponent-left', onOpponentLeft)
+    socket.on('reaction', onReaction)
+    socket.on('match-reset', onMatchReset)
+    socket.on('rematch-update', onRematchUpdate)
     return () => {
       socket.off('opponent-picked', onOpponentPicked)
       socket.off('reveal', onReveal)
       socket.off('opponent-left', onOpponentLeft)
+      socket.off('reaction', onReaction)
+      socket.off('match-reset', onMatchReset)
+      socket.off('rematch-update', onRematchUpdate)
     }
   }, [you, opponentId])
 
+  function finishReveal() {
+    const data = pendingRevealRef.current
+    if (!data) return
+    setReveal({ mine: data.mine, opp: data.opp, outcome: data.outcome })
+    setScores(data.scores)
+    if (data.outcome === 'win') sounds.win()
+    else if (data.outcome === 'lose') sounds.lose()
+    else sounds.draw()
+    recordRound('friend', data.outcome)
+
+    const myScore = data.scores[you] || 0
+    const oppScore = data.scores[opponentId] || 0
+    if (myScore >= matchLength) {
+      setMatchOutcome('win')
+      recordMatch('friend', 'win')
+      setTimeout(() => sounds.victory(), 300)
+    } else if (oppScore >= matchLength) {
+      setMatchOutcome('lose')
+      recordMatch('friend', 'lose')
+      setTimeout(() => sounds.defeat(), 300)
+    }
+    setPhase('revealed')
+    pendingRevealRef.current = null
+  }
+
   function play(choiceId) {
-    if (myChoice || reveal || opponentLeft) return
+    if (phase !== 'picking' || myChoice || matchOutcome || opponentLeft) return
+    sounds.click()
     setMyChoice(choiceId)
     getSocket().emit('make-choice', { choice: choiceId })
   }
 
   function nextRound() {
+    if (matchOutcome) return
     setMyChoice(null)
     setOppPicked(false)
     setReveal(null)
     setRound((r) => r + 1)
+    setPhase('picking')
+  }
+
+  function requestRematch() {
+    setRematch((r) => ({ ...r, me: true }))
+    getSocket().emit('rematch-request')
   }
 
   function quit() {
@@ -63,12 +141,21 @@ export default function FriendGame({ session, onExit }) {
     onExit()
   }
 
+  function react(emoji) {
+    if (opponentLeft) return
+    sounds.click()
+    const r = { id: Date.now() + Math.random(), emoji }
+    setMyReaction(r)
+    setTimeout(() => setMyReaction((cur) => (cur && cur.id === r.id ? null : cur)), 2000)
+    getSocket().emit('reaction', { emoji })
+  }
+
   const resultText = useMemo(() => {
     if (!reveal) return null
     if (reveal.outcome === 'win') return 'YOU WIN!'
-    if (reveal.outcome === 'lose') return 'FRIEND WINS!'
+    if (reveal.outcome === 'lose') return `${oppName.toUpperCase()} WINS!`
     return "IT'S A DRAW"
-  }, [reveal])
+  }, [reveal, oppName])
 
   const resultStyle = useMemo(() => {
     if (!reveal) return ''
@@ -81,7 +168,7 @@ export default function FriendGame({ session, onExit }) {
     return (
       <div className="flex flex-col items-center gap-6 mt-10">
         <h2 className="font-display text-xl sm:text-2xl text-rose-300 neon-text">
-          OPPONENT LEFT
+          {oppName.toUpperCase()} LEFT
         </h2>
         <p className="text-sm text-slate-300 max-w-sm text-center">
           Your friend disconnected. Head back to the menu to start a new game.
@@ -98,6 +185,21 @@ export default function FriendGame({ session, onExit }) {
     )
   }
 
+  if (matchOutcome) {
+    return (
+      <VictoryScreen
+        outcome={matchOutcome}
+        scores={{ player: scores[you] || 0, opponent: scores[opponentId] || 0 }}
+        playerLabel={myName}
+        opponentLabel={oppName}
+        playAgainLabel={rematch.me ? 'Rematch requested' : 'Rematch'}
+        waitingForOpponent={rematch.me && !rematch.opp}
+        onPlayAgain={requestRematch}
+        onExit={quit}
+      />
+    )
+  }
+
   return (
     <div className="w-full max-w-4xl flex flex-col items-center gap-6">
       <header className="w-full flex flex-col items-center gap-4">
@@ -109,40 +211,45 @@ export default function FriendGame({ session, onExit }) {
             ← Quit
           </button>
           <span className="text-xs sm:text-sm font-display tracking-widest uppercase text-cyan-300">
-            ROOM {roomKey}
+            ROOM {roomKey} · First to {matchLength}
           </span>
-          <span className="w-12" />
+          <MuteToggle />
         </div>
 
-        <h1 className="font-display text-2xl sm:text-4xl text-center neon-text">
-          <span className="text-purple-300">YOU</span>
+        <h1 className="font-display text-xl sm:text-3xl text-center neon-text">
+          <span className="text-purple-300">{myName}</span>
           <span className="text-slate-300"> · vs · </span>
-          <span className="text-cyan-300">FRIEND</span>
+          <span className="text-cyan-300">{oppName}</span>
         </h1>
 
         <div className="flex items-center gap-3 sm:gap-5">
-          <ScoreBox label="You" value={scores[you] || 0} accent="text-emerald-300" />
+          <ScoreBox label={myName} value={scores[you] || 0} accent="text-emerald-300" />
           <ScoreBox label="Round" value={round} accent="text-purple-300" />
-          <ScoreBox label="Friend" value={scores[opponentId] || 0} accent="text-rose-300" />
+          <ScoreBox label={oppName} value={scores[opponentId] || 0} accent="text-rose-300" />
         </div>
       </header>
 
       <section className="w-full grid grid-cols-2 gap-4 sm:gap-10 items-end mt-2">
         <ChoiceCard
           choice={reveal ? reveal.mine : myChoice}
-          owner="You"
-          shaking={isWaiting}
+          variant={variant}
+          owner={myName}
+          shaking={phase === 'countdown'}
+          reaction={myReaction}
         />
         <ChoiceCard
           choice={reveal ? reveal.opp : oppPicked ? 'locked' : null}
-          owner="Friend"
+          variant={variant}
+          owner={oppName}
           hidden={!reveal && oppPicked}
-          shaking={isWaiting}
+          shaking={phase === 'countdown'}
+          reaction={oppReaction}
         />
       </section>
 
       <div className="h-16 flex items-center justify-center">
-        {resultText && (
+        {phase === 'countdown' && <Countdown onDone={finishReveal} />}
+        {phase === 'revealed' && resultText && (
           <div
             key={round}
             className={`font-display text-2xl sm:text-3xl animate-pop ${resultStyle}`}
@@ -150,23 +257,15 @@ export default function FriendGame({ session, onExit }) {
             {resultText}
           </div>
         )}
-        {!resultText && myChoice && (
+        {phase === 'picking' && myChoice && (
           <div className="text-sm sm:text-base text-slate-300 font-display tracking-widest uppercase">
-            Waiting for friend…
+            Waiting for {oppName}…
           </div>
         )}
       </div>
 
       <section className="w-full flex flex-col items-center gap-4">
-        {!reveal && (
-          <>
-            <p className="text-xs sm:text-sm text-slate-400 tracking-widest uppercase">
-              Choose your weapon
-            </p>
-            <ChoiceButtons onPick={play} disabled={!!myChoice} />
-          </>
-        )}
-        {reveal && (
+        {phase === 'revealed' ? (
           <button
             onClick={nextRound}
             className="px-6 py-3 rounded-xl font-display text-xs sm:text-sm tracking-widest uppercase
@@ -175,7 +274,20 @@ export default function FriendGame({ session, onExit }) {
           >
             Next Round →
           </button>
+        ) : (
+          <>
+            <p className="text-xs sm:text-sm text-slate-400 tracking-widest uppercase">
+              Choose your weapon
+            </p>
+            <ChoiceButtons
+              choices={variant.choices}
+              onPick={play}
+              disabled={phase !== 'picking' || !!myChoice}
+            />
+          </>
         )}
+
+        <ReactionsBar onReact={react} disabled={opponentLeft} />
       </section>
     </div>
   )

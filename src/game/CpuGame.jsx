@@ -1,16 +1,28 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ChoiceCard from '../components/ChoiceCard.jsx'
 import ScoreBox from '../components/ScoreBox.jsx'
 import ChoiceButtons from '../components/ChoiceButtons.jsx'
-import { CHOICES, decide } from '../game/constants.js'
+import Countdown from '../components/Countdown.jsx'
+import VictoryScreen from '../components/VictoryScreen.jsx'
+import MuteToggle from '../components/MuteToggle.jsx'
+import { getVariant, decide } from './constants.js'
+import { createCpuBrain } from './cpu.js'
+import { sounds } from '../audio.js'
+import { recordRound, recordMatch } from '../storage.js'
 
-export default function CpuGame({ onExit }) {
+export default function CpuGame({ settings, onExit }) {
+  const variant = useMemo(() => getVariant(settings.variantId), [settings.variantId])
+  const brainRef = useRef(null)
+  if (!brainRef.current) brainRef.current = createCpuBrain(variant.id)
+
+  const [phase, setPhase] = useState('picking')
   const [playerChoice, setPlayerChoice] = useState(null)
   const [cpuChoice, setCpuChoice] = useState(null)
+  const [pendingCpu, setPendingCpu] = useState(null)
   const [result, setResult] = useState(null)
   const [scores, setScores] = useState({ player: 0, cpu: 0, draws: 0 })
   const [round, setRound] = useState(1)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const [matchOutcome, setMatchOutcome] = useState(null)
 
   const resultText = useMemo(() => {
     if (!result) return null
@@ -26,47 +38,97 @@ export default function CpuGame({ onExit }) {
   }, [result])
 
   function play(choiceId) {
-    if (isPlaying) return
-    setIsPlaying(true)
-    setResult(null)
+    if (phase !== 'picking' || matchOutcome) return
+    sounds.click()
+    const cpu = brainRef.current.predict()
+    brainRef.current.record(choiceId)
     setPlayerChoice(choiceId)
+    setPendingCpu(cpu)
     setCpuChoice(null)
+    setResult(null)
+    setPhase('countdown')
+  }
 
-    setTimeout(() => {
-      const pick = CHOICES[Math.floor(Math.random() * 3)].id
-      const outcome = decide(choiceId, pick)
-      setCpuChoice(pick)
-      setResult(outcome)
-      setScores((s) => ({
+  function reveal() {
+    const cpu = pendingCpu
+    const outcome = decide(variant, playerChoice, cpu)
+    setCpuChoice(cpu)
+    setResult(outcome)
+    if (outcome === 'win') sounds.win()
+    else if (outcome === 'lose') sounds.lose()
+    else sounds.draw()
+    recordRound('cpu', outcome)
+    setScores((s) => {
+      const next = {
         player: s.player + (outcome === 'win' ? 1 : 0),
         cpu: s.cpu + (outcome === 'lose' ? 1 : 0),
         draws: s.draws + (outcome === 'draw' ? 1 : 0),
-      }))
-      setRound((r) => r + 1)
-      setIsPlaying(false)
-    }, 900)
+      }
+      if (next.player >= settings.matchLength) {
+        setMatchOutcome('win')
+        recordMatch('cpu', 'win')
+        setTimeout(() => sounds.victory(), 300)
+      } else if (next.cpu >= settings.matchLength) {
+        setMatchOutcome('lose')
+        recordMatch('cpu', 'lose')
+        setTimeout(() => sounds.defeat(), 300)
+      }
+      return next
+    })
+    setPhase('revealed')
   }
 
-  function reset() {
+  function nextRound() {
+    if (matchOutcome) return
     setPlayerChoice(null)
     setCpuChoice(null)
+    setPendingCpu(null)
+    setResult(null)
+    setRound((r) => r + 1)
+    setPhase('picking')
+  }
+
+  function newMatch() {
+    setPlayerChoice(null)
+    setCpuChoice(null)
+    setPendingCpu(null)
     setResult(null)
     setScores({ player: 0, cpu: 0, draws: 0 })
     setRound(1)
-    setIsPlaying(false)
+    setMatchOutcome(null)
+    setPhase('picking')
+    brainRef.current = createCpuBrain(variant.id)
   }
 
   useEffect(() => {
     function onKey(e) {
+      if (matchOutcome) return
       const key = e.key.toLowerCase()
-      if (key === 'r') play('rock')
-      else if (key === 'p') play('paper')
-      else if (key === 's') play('scissors')
-      else if (key === 'escape') reset()
+      if (key === 'escape') return newMatch()
+      if (phase !== 'picking') {
+        if (key === 'enter' && phase === 'revealed') nextRound()
+        return
+      }
+      const choice = variant.choices.find((c) => c.hotkey === key)
+      if (choice) play(choice.id)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
+
+  if (matchOutcome) {
+    return (
+      <VictoryScreen
+        outcome={matchOutcome}
+        scores={{ player: scores.player, opponent: scores.cpu }}
+        playerLabel={settings.name}
+        opponentLabel="CPU"
+        playAgainLabel="New Match"
+        onPlayAgain={newMatch}
+        onExit={onExit}
+      />
+    )
+  }
 
   return (
     <div className="w-full max-w-4xl flex flex-col items-center gap-6">
@@ -79,21 +141,19 @@ export default function CpuGame({ onExit }) {
             ← Menu
           </button>
           <span className="text-xs sm:text-sm font-display tracking-widest uppercase text-purple-300">
-            VS CPU
+            VS CPU · First to {settings.matchLength}
           </span>
-          <span className="w-12" />
+          <MuteToggle />
         </div>
 
-        <h1 className="font-display text-2xl sm:text-4xl text-center neon-text">
-          <span className="text-purple-300">ROCK</span>
-          <span className="text-slate-300"> · </span>
-          <span className="text-pink-300">PAPER</span>
-          <span className="text-slate-300"> · </span>
-          <span className="text-cyan-300">SCISSORS</span>
+        <h1 className="font-display text-xl sm:text-3xl text-center neon-text">
+          <span className="text-purple-300">{settings.name}</span>
+          <span className="text-slate-300"> · vs · </span>
+          <span className="text-pink-300">CPU</span>
         </h1>
 
         <div className="flex items-center gap-3 sm:gap-5">
-          <ScoreBox label="You" value={scores.player} accent="text-emerald-300" />
+          <ScoreBox label={settings.name} value={scores.player} accent="text-emerald-300" />
           <ScoreBox label="Round" value={round} accent="text-purple-300" />
           <ScoreBox label="CPU" value={scores.cpu} accent="text-rose-300" />
           <ScoreBox label="Draws" value={scores.draws} accent="text-amber-300" />
@@ -101,12 +161,23 @@ export default function CpuGame({ onExit }) {
       </header>
 
       <section className="w-full grid grid-cols-2 gap-4 sm:gap-10 items-end mt-2">
-        <ChoiceCard choice={playerChoice} owner="You" shaking={isPlaying} />
-        <ChoiceCard choice={cpuChoice} owner="CPU" shaking={isPlaying} />
+        <ChoiceCard
+          choice={playerChoice}
+          variant={variant}
+          owner={settings.name}
+          shaking={phase === 'countdown'}
+        />
+        <ChoiceCard
+          choice={cpuChoice}
+          variant={variant}
+          owner="CPU"
+          shaking={phase === 'countdown'}
+        />
       </section>
 
       <div className="h-16 flex items-center justify-center">
-        {resultText && (
+        {phase === 'countdown' && <Countdown onDone={reveal} />}
+        {phase === 'revealed' && resultText && (
           <div
             key={round}
             className={`font-display text-2xl sm:text-3xl animate-pop ${resultStyle}`}
@@ -117,24 +188,41 @@ export default function CpuGame({ onExit }) {
       </div>
 
       <section className="w-full flex flex-col items-center gap-4">
-        <p className="text-xs sm:text-sm text-slate-400 tracking-widest uppercase">
-          Choose your weapon
-        </p>
-        <ChoiceButtons onPick={play} disabled={isPlaying} />
+        {phase === 'revealed' ? (
+          <button
+            onClick={nextRound}
+            className="px-6 py-3 rounded-xl font-display text-xs sm:text-sm tracking-widest uppercase
+              bg-gradient-to-br from-purple-600/50 to-pink-600/50 border border-purple-400 text-white
+              hover:scale-105"
+          >
+            Next Round →
+          </button>
+        ) : (
+          <>
+            <p className="text-xs sm:text-sm text-slate-400 tracking-widest uppercase">
+              Choose your weapon
+            </p>
+            <ChoiceButtons
+              choices={variant.choices}
+              onPick={play}
+              disabled={phase !== 'picking'}
+            />
+          </>
+        )}
 
         <button
-          onClick={reset}
+          onClick={newMatch}
           className="mt-8 px-6 py-2 rounded-xl text-xs sm:text-sm font-display tracking-widest uppercase
             bg-slate-800/60 border border-slate-600 text-slate-300
             hover:bg-rose-900/40 hover:border-rose-400 hover:text-rose-200
             transition-colors"
         >
-          Reset
+          Reset Match
         </button>
       </section>
 
       <footer className="text-[10px] sm:text-xs text-slate-500 tracking-widest uppercase">
-        Hotkeys: R · P · S — Esc to reset
+        Hotkeys: {variant.choices.map((c) => `${c.hotkey.toUpperCase()}=${c.label}`).join(' · ')} — Esc resets
       </footer>
     </div>
   )

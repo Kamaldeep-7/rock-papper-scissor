@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { getSocket } from '../socket.js'
+import { sounds } from '../audio.js'
 
-export default function FriendsLobby({ onConnected, onBack }) {
-  const [view, setView] = useState('choose')
+export default function FriendsLobby({ settings, initialKey, onConnected, onBack }) {
+  const [view, setView] = useState(initialKey ? 'joining' : 'choose')
   const [roomKey, setRoomKey] = useState('')
-  const [inputKey, setInputKey] = useState('')
+  const [inputKey, setInputKey] = useState(initialKey || '')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [connected, setConnected] = useState(false)
@@ -25,8 +26,8 @@ export default function FriendsLobby({ onConnected, onBack }) {
 
   useEffect(() => {
     const socket = getSocket()
-    function onReady({ players }) {
-      onConnected({ key: roomKey, you: socket.id, players })
+    function onReady({ players, names, variantId, matchLength }) {
+      onConnected({ key: roomKey, you: socket.id, players, names, variantId, matchLength })
     }
     socket.on('room-ready', onReady)
     return () => socket.off('room-ready', onReady)
@@ -36,14 +37,19 @@ export default function FriendsLobby({ onConnected, onBack }) {
     if (busy) return
     setBusy(true)
     setError('')
+    sounds.click()
     const socket = getSocket()
-    socket.emit('create-room', (res) => {
-      setBusy(false)
-      if (!res?.ok) return setError(res?.error || 'Could not create room')
-      setRoomKey(res.key)
-      setView('hosting')
-      setStatus('Waiting for opponent…')
-    })
+    socket.emit(
+      'create-room',
+      { name: settings.name, variantId: settings.variantId, matchLength: settings.matchLength },
+      (res) => {
+        setBusy(false)
+        if (!res?.ok) return setError(res?.error || 'Could not create room')
+        setRoomKey(res.key)
+        setView('hosting')
+        setStatus('Waiting for opponent…')
+      }
+    )
   }
 
   function joinRoom() {
@@ -52,18 +58,17 @@ export default function FriendsLobby({ onConnected, onBack }) {
     if (key.length < 4) return setError('Enter a valid key')
     setBusy(true)
     setError('')
+    sounds.click()
     const socket = getSocket()
-    socket.emit('join-room', { key }, (res) => {
+    socket.emit('join-room', { key, name: settings.name }, (res) => {
       setBusy(false)
       if (!res?.ok) return setError(res?.error || 'Could not join room')
       setRoomKey(res.key)
-      // room-ready will fire and onConnected will run
     })
   }
 
   function cancel() {
-    const socket = getSocket()
-    socket.emit('leave-room')
+    getSocket().emit('leave-room')
     setRoomKey('')
     setInputKey('')
     setError('')
@@ -80,8 +85,18 @@ export default function FriendsLobby({ onConnected, onBack }) {
     }
   }
 
+  async function copyLink() {
+    try {
+      const url = `${window.location.origin}${window.location.pathname}?key=${roomKey}`
+      await navigator.clipboard.writeText(url)
+      setStatus('Link copied! Waiting for opponent…')
+    } catch {
+      setStatus('Copy failed — share the key manually')
+    }
+  }
+
   return (
-    <div className="flex flex-col items-center gap-8 mt-6 w-full max-w-md">
+    <div className="flex flex-col items-center gap-7 mt-6 w-full max-w-md">
       <h2 className="font-display text-xl sm:text-2xl text-center neon-text">
         <span className="text-cyan-300">FRIEND</span>
         <span className="text-slate-300"> · </span>
@@ -90,14 +105,16 @@ export default function FriendsLobby({ onConnected, onBack }) {
 
       <div className="flex items-center gap-2 text-[10px] sm:text-xs tracking-widest uppercase">
         <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-        <span className="text-slate-400">{connected ? 'Connected to server' : 'Connecting…'}</span>
+        <span className="text-slate-400">
+          {connected ? `Hi, ${settings.name} — connected` : 'Connecting…'}
+        </span>
       </div>
 
       {view === 'choose' && (
         <div className="flex flex-col w-full gap-4">
           <LobbyButton
             label="Create Room"
-            sub="Generate a key for a friend"
+            sub={`${variantLabel(settings.variantId)} · First to ${settings.matchLength}`}
             onClick={createRoom}
             disabled={!connected || busy}
           />
@@ -119,17 +136,23 @@ export default function FriendsLobby({ onConnected, onBack }) {
       {view === 'hosting' && (
         <div className="flex flex-col w-full items-center gap-5">
           <span className="text-xs sm:text-sm tracking-widest uppercase text-slate-400">
-            Share this key
+            Share this key or link
           </span>
-          <div className="flex items-center gap-3">
-            <div className="px-6 py-4 rounded-2xl bg-slate-900/70 border-2 border-cyan-400/60 font-display text-2xl sm:text-3xl tracking-[0.4em] text-cyan-200">
-              {roomKey}
-            </div>
+          <div className="px-6 py-4 rounded-2xl bg-slate-900/70 border-2 border-cyan-400/60 font-display text-2xl sm:text-3xl tracking-[0.4em] text-cyan-200">
+            {roomKey}
+          </div>
+          <div className="flex gap-3">
             <button
               onClick={copyKey}
-              className="px-4 py-4 rounded-2xl bg-slate-800/80 border border-slate-600 text-xs font-display tracking-widest uppercase text-slate-200 hover:border-cyan-400 hover:text-cyan-200"
+              className="px-4 py-2 rounded-xl bg-slate-800/80 border border-slate-600 text-xs font-display tracking-widest uppercase text-slate-200 hover:border-cyan-400 hover:text-cyan-200"
             >
-              Copy
+              Copy Key
+            </button>
+            <button
+              onClick={copyLink}
+              className="px-4 py-2 rounded-xl bg-slate-800/80 border border-slate-600 text-xs font-display tracking-widest uppercase text-slate-200 hover:border-pink-400 hover:text-pink-200"
+            >
+              Copy Link
             </button>
           </div>
           <div className="flex items-center gap-2 text-slate-300 text-sm">
@@ -191,6 +214,11 @@ export default function FriendsLobby({ onConnected, onBack }) {
       )}
     </div>
   )
+}
+
+function variantLabel(id) {
+  if (id === 'lizardSpock') return 'Lizard · Spock'
+  return 'Classic'
 }
 
 function LobbyButton({ label, sub, onClick, disabled }) {

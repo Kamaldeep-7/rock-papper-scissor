@@ -1,11 +1,13 @@
-import { CHOICE_MAP } from '../game/constants.js'
+import { getChoiceMap } from '../game/constants.js'
 
-export default function ChoiceCard({ choice, owner, shaking, hidden }) {
-  const emoji = hidden ? '❔' : choice ? CHOICE_MAP[choice].emoji : '❔'
-  const label = hidden ? 'Locked in' : choice ? CHOICE_MAP[choice].label : 'Waiting…'
+export default function ChoiceCard({ choice, variant, owner, shaking, hidden, reaction }) {
+  const map = getChoiceMap(variant)
+  const display = choice && map[choice]
+  const emoji = hidden ? '❔' : display ? display.emoji : '❔'
+  const label = hidden ? 'Locked in' : display ? display.label : 'Waiting…'
   return (
-    <div className="flex flex-col items-center gap-3 w-full">
-      <span className="text-xs sm:text-sm tracking-widest uppercase text-purple-300/80 font-display">
+    <div className="flex flex-col items-center gap-3 w-full relative">
+      <span className="text-xs sm:text-sm tracking-widest uppercase text-purple-300/80 font-display truncate max-w-[160px] sm:max-w-[200px]">
         {owner}
       </span>
       <div
@@ -20,6 +22,14 @@ export default function ChoiceCard({ choice, owner, shaking, hidden }) {
         >
           {emoji}
         </span>
+        {reaction && (
+          <span
+            key={reaction.id}
+            className="absolute -top-4 -right-2 text-4xl sm:text-5xl animate-pop drop-shadow-[0_0_8px_rgba(236,72,153,0.7)]"
+          >
+            {reaction.emoji}
+          </span>
+        )}
       </div>
       <span className="text-sm sm:text-base text-slate-300 font-display">{label}</span>
     </div>
