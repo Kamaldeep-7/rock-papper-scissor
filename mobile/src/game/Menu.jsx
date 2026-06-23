@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-
 import { VARIANTS } from './constants.js'
 import { getName, setName as saveName, getStats } from '../storage.js'
 import MuteToggle from '../components/MuteToggle.jsx'
+import AchievementsRow from '../components/AchievementsRow.jsx'
 import { sounds } from '../audio.js'
 import { colors, font } from '../theme.js'
 
@@ -86,6 +87,7 @@ export default function Menu({ onPick }) {
       </View>
 
       <StatsRow />
+      <AchievementsRow />
     </ScrollView>
   )
 }

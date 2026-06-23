@@ -7,9 +7,11 @@ import Countdown from '../components/Countdown.jsx'
 import VictoryScreen from '../components/VictoryScreen.jsx'
 import ReactionsBar from '../components/ReactionsBar.jsx'
 import MuteToggle from '../components/MuteToggle.jsx'
+import AchievementToast from '../components/AchievementToast.jsx'
 import { getVariant } from './constants.js'
 import { sounds } from '../audio.js'
-import { recordRound, recordMatch } from '../storage.js'
+import { recordRound, recordMatch, getSnapshot, recordUnlocks } from '../storage.js'
+import { evaluate as evaluateAchievements } from './achievements.js'
 import { getSocket } from '../socket.js'
 import { colors, font } from '../theme.js'
 
@@ -32,6 +34,12 @@ export default function FriendGame({ session, onExit }) {
   const [rematch, setRematch] = useState({ me: false, opp: false })
   const [myReaction, setMyReaction] = useState(null)
   const [oppReaction, setOppReaction] = useState(null)
+  const [unlockedToast, setUnlockedToast] = useState([])
+
+  function checkUnlocks() {
+    const newly = recordUnlocks(evaluateAchievements(getSnapshot()))
+    if (newly.length) setUnlockedToast(newly)
+  }
 
   const pendingRevealRef = useRef(null)
 
@@ -96,19 +104,20 @@ export default function FriendGame({ session, onExit }) {
     if (data.outcome === 'win') sounds.win()
     else if (data.outcome === 'lose') sounds.lose()
     else sounds.draw()
-    recordRound('friend', data.outcome)
+    recordRound('friend', data.outcome, { choice: data.mine })
 
     const myScore = data.scores[you] || 0
     const oppScore = data.scores[opponentId] || 0
     if (myScore >= matchLength) {
       setMatchOutcome('win')
-      recordMatch('friend', 'win')
+      recordMatch('friend', 'win', { variantId, flawless: oppScore === 0 })
       setTimeout(() => sounds.victory(), 300)
     } else if (oppScore >= matchLength) {
       setMatchOutcome('lose')
-      recordMatch('friend', 'lose')
+      recordMatch('friend', 'lose', { variantId })
       setTimeout(() => sounds.defeat(), 300)
     }
+    checkUnlocks()
     setPhase('revealed')
     pendingRevealRef.current = null
   }
@@ -164,6 +173,8 @@ export default function FriendGame({ session, onExit }) {
 
   if (opponentLeft) {
     return (
+      <>
+        <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
       <View style={styles.leftWrap}>
         <Text style={styles.leftTitle}>{oppName.toUpperCase()} LEFT</Text>
         <Text style={styles.leftBody}>
@@ -176,11 +187,14 @@ export default function FriendGame({ session, onExit }) {
           <Text style={styles.backToMenuText}>← Back to Menu</Text>
         </Pressable>
       </View>
+      </>
     )
   }
 
   if (matchOutcome) {
     return (
+      <>
+        <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
       <VictoryScreen
         outcome={matchOutcome}
         scores={{ player: scores[you] || 0, opponent: scores[opponentId] || 0 }}
@@ -191,6 +205,7 @@ export default function FriendGame({ session, onExit }) {
         onPlayAgain={requestRematch}
         onExit={quit}
       />
+      </>
     )
   }
 
@@ -199,6 +214,7 @@ export default function FriendGame({ session, onExit }) {
       contentContainerStyle={styles.scroll}
       showsVerticalScrollIndicator={false}
     >
+      <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
       <View style={styles.topBar}>
         <Pressable onPress={quit} hitSlop={10} style={styles.backBtn}>
           <Text style={styles.backText}>← Quit</Text>

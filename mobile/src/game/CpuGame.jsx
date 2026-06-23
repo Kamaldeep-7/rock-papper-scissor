@@ -6,10 +6,12 @@ import ChoiceButtons from '../components/ChoiceButtons.jsx'
 import Countdown from '../components/Countdown.jsx'
 import VictoryScreen from '../components/VictoryScreen.jsx'
 import MuteToggle from '../components/MuteToggle.jsx'
+import AchievementToast from '../components/AchievementToast.jsx'
 import { getVariant, decide } from './constants.js'
 import { createCpuBrain } from './cpu.js'
 import { sounds } from '../audio.js'
-import { recordRound, recordMatch } from '../storage.js'
+import { recordRound, recordMatch, getSnapshot, recordUnlocks } from '../storage.js'
+import { evaluate as evaluateAchievements } from './achievements.js'
 import { colors, font } from '../theme.js'
 
 export default function CpuGame({ settings, onExit }) {
@@ -25,6 +27,12 @@ export default function CpuGame({ settings, onExit }) {
   const [scores, setScores] = useState({ player: 0, cpu: 0, draws: 0 })
   const [round, setRound] = useState(1)
   const [matchOutcome, setMatchOutcome] = useState(null)
+  const [unlockedToast, setUnlockedToast] = useState([])
+
+  function checkUnlocks() {
+    const newly = recordUnlocks(evaluateAchievements(getSnapshot()))
+    if (newly.length) setUnlockedToast(newly)
+  }
 
   const resultText = useMemo(() => {
     if (!result) return null
@@ -59,7 +67,7 @@ export default function CpuGame({ settings, onExit }) {
     if (outcome === 'win') sounds.win()
     else if (outcome === 'lose') sounds.lose()
     else sounds.draw()
-    recordRound('cpu', outcome)
+    recordRound('cpu', outcome, { choice: playerChoice })
     setScores((s) => {
       const next = {
         player: s.player + (outcome === 'win' ? 1 : 0),
@@ -68,7 +76,7 @@ export default function CpuGame({ settings, onExit }) {
       }
       if (next.player >= settings.matchLength) {
         setMatchOutcome('win')
-        recordMatch('cpu', 'win')
+        recordMatch('cpu', 'win', { variantId: settings.variantId, flawless: next.cpu === 0 })
         setTimeout(() => sounds.victory(), 300)
       } else if (next.cpu >= settings.matchLength) {
         setMatchOutcome('lose')
@@ -77,6 +85,7 @@ export default function CpuGame({ settings, onExit }) {
       }
       return next
     })
+    checkUnlocks()
     setPhase('revealed')
   }
 
@@ -104,15 +113,18 @@ export default function CpuGame({ settings, onExit }) {
 
   if (matchOutcome) {
     return (
-      <VictoryScreen
-        outcome={matchOutcome}
-        scores={{ player: scores.player, opponent: scores.cpu }}
-        playerLabel={settings.name}
-        opponentLabel="CPU"
-        playAgainLabel="New Match"
-        onPlayAgain={newMatch}
-        onExit={onExit}
-      />
+      <>
+        <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
+        <VictoryScreen
+          outcome={matchOutcome}
+          scores={{ player: scores.player, opponent: scores.cpu }}
+          playerLabel={settings.name}
+          opponentLabel="CPU"
+          playAgainLabel="New Match"
+          onPlayAgain={newMatch}
+          onExit={onExit}
+        />
+      </>
     )
   }
 
@@ -121,6 +133,7 @@ export default function CpuGame({ settings, onExit }) {
       contentContainerStyle={styles.scroll}
       showsVerticalScrollIndicator={false}
     >
+      <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
       <View style={styles.topBar}>
         <Pressable onPress={onExit} hitSlop={10} style={styles.backBtn}>
           <Text style={styles.backText}>← Menu</Text>

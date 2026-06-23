@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { VARIANTS } from './constants.js'
 import { getName, setName as saveName, getStats } from '../storage.js'
 import MuteToggle from '../components/MuteToggle.jsx'
+import AchievementsRow from '../components/AchievementsRow.jsx'
 import { sounds } from '../audio.js'
 
 const MATCH_LENGTHS = [3, 5, 7]
@@ -83,6 +84,7 @@ export default function Menu({ onPick }) {
       </div>
 
       <StatsRow />
+      <AchievementsRow />
 
       <a
         href="/downloads/rps.apk"
