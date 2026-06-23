@@ -1,7 +1,10 @@
+import Confetti from './Confetti.jsx'
+
 export default function VictoryScreen({ outcome, scores, playerLabel, opponentLabel, onPlayAgain, onExit, playAgainLabel = 'Play Again', waitingForOpponent = false }) {
   const win = outcome === 'win'
   return (
     <div className="flex flex-col items-center gap-7 mt-6 sm:mt-12 animate-pop">
+      {win && <Confetti />}
       <span className="text-xs sm:text-sm tracking-widest uppercase text-slate-400">
         Match {win ? 'won' : 'over'}
       </span>

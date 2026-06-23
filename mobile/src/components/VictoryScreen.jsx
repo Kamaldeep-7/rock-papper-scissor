@@ -1,5 +1,6 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native'
 import { colors, font } from '../theme.js'
+import Confetti from './Confetti.jsx'
 
 export default function VictoryScreen({
   outcome,
@@ -13,7 +14,9 @@ export default function VictoryScreen({
 }) {
   const win = outcome === 'win'
   return (
-    <View style={styles.wrap}>
+    <View style={styles.outer}>
+      {win && <Confetti />}
+      <View style={styles.wrap}>
       <Text style={styles.hint}>Match {win ? 'won' : 'over'}</Text>
       <Text style={[styles.heading, { color: win ? colors.green : colors.red }]}>
         {win ? 'VICTORY' : 'DEFEAT'}
@@ -49,11 +52,13 @@ export default function VictoryScreen({
           <Text style={styles.menuText}>← Menu</Text>
         </Pressable>
       </View>
+      </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  outer: { flex: 1, width: '100%' },
   wrap: { alignItems: 'center', gap: 22, marginTop: 30, paddingHorizontal: 16 },
   hint: {
     fontSize: 11,
