@@ -212,7 +212,7 @@ export default function CpuGame({ settings, onExit }) {
 
         <button
           onClick={newMatch}
-          className="mt-8 px-6 py-2 rounded-xl text-xs sm:text-sm font-display tracking-widest uppercase
+          className="mt-2 px-6 py-2 rounded-xl text-xs sm:text-sm font-display tracking-widest uppercase
             bg-slate-800/60 border border-slate-600 text-slate-300
             hover:bg-rose-900/40 hover:border-rose-400 hover:text-rose-200
             transition-colors"
