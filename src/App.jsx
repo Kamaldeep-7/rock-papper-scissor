@@ -27,6 +27,7 @@ export default function App() {
     variantId: 'classic',
     matchLength: 5,
     name: 'Player',
+    difficulty: 'medium',
   })
   const [friendSession, setFriendSession] = useState(null)
 

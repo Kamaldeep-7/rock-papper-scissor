@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native'
 import { VARIANTS } from './constants.js'
+import { DIFFICULTIES } from './cpu.js'
 import { getName, setName as saveName, getStats } from '../storage.js'
 import MuteToggle from '../components/MuteToggle.jsx'
 import AchievementsRow from '../components/AchievementsRow.jsx'
+import DailyChallengeCard from '../components/DailyChallengeCard.jsx'
 import { sounds } from '../audio.js'
 import { colors, font } from '../theme.js'
 
@@ -13,12 +15,13 @@ export default function Menu({ onPick }) {
   const [name, setName] = useState(getName() || 'Player')
   const [variantId, setVariantId] = useState('classic')
   const [matchLength, setMatchLength] = useState(5)
+  const [difficulty, setDifficulty] = useState('medium')
 
   function start(mode) {
     sounds.click()
     const trimmed = (name || '').trim() || 'Player'
     saveName(trimmed)
-    onPick(mode, { variantId, matchLength, name: trimmed })
+    onPick(mode, { variantId, matchLength, name: trimmed, difficulty })
   }
 
   return (
@@ -66,6 +69,14 @@ export default function Menu({ onPick }) {
             onChange={(n) => { sounds.click(); setMatchLength(n) }}
           />
         </Field>
+
+        <Field label="CPU difficulty">
+          <Pills
+            options={DIFFICULTIES.map((d) => ({ id: d.id, label: d.label }))}
+            value={difficulty}
+            onChange={(id) => { sounds.click(); setDifficulty(id) }}
+          />
+        </Field>
       </View>
 
       <Text style={[styles.subtitle, { marginTop: 26 }]}>Choose your battle</Text>
@@ -86,6 +97,7 @@ export default function Menu({ onPick }) {
         />
       </View>
 
+      <DailyChallengeCard />
       <StatsRow />
       <AchievementsRow />
     </ScrollView>

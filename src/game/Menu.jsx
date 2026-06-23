@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { VARIANTS } from './constants.js'
+import { DIFFICULTIES } from './cpu.js'
 import { getName, setName as saveName, getStats } from '../storage.js'
 import MuteToggle from '../components/MuteToggle.jsx'
 import AchievementsRow from '../components/AchievementsRow.jsx'
+import DailyChallengeCard from '../components/DailyChallengeCard.jsx'
 import { sounds } from '../audio.js'
 
 const MATCH_LENGTHS = [3, 5, 7]
@@ -11,12 +13,13 @@ export default function Menu({ onPick }) {
   const [name, setName] = useState(getName() || 'Player')
   const [variantId, setVariantId] = useState('classic')
   const [matchLength, setMatchLength] = useState(5)
+  const [difficulty, setDifficulty] = useState('medium')
 
   function start(mode) {
     sounds.click()
     const trimmed = name.trim() || 'Player'
     saveName(trimmed)
-    onPick(mode, { variantId, matchLength, name: trimmed })
+    onPick(mode, { variantId, matchLength, name: trimmed, difficulty })
   }
 
   return (
@@ -63,6 +66,14 @@ export default function Menu({ onPick }) {
             onChange={(n) => { sounds.click(); setMatchLength(n) }}
           />
         </Field>
+
+        <Field label="CPU difficulty">
+          <Pills
+            options={DIFFICULTIES.map((d) => ({ id: d.id, label: d.label }))}
+            value={difficulty}
+            onChange={(id) => { sounds.click(); setDifficulty(id) }}
+          />
+        </Field>
       </div>
 
       <p className="text-xs sm:text-sm tracking-widest uppercase text-slate-400">
@@ -83,6 +94,7 @@ export default function Menu({ onPick }) {
         />
       </div>
 
+      <DailyChallengeCard />
       <StatsRow />
       <AchievementsRow />
 

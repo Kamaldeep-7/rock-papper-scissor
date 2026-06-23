@@ -8,10 +8,13 @@ import VictoryScreen from '../components/VictoryScreen.jsx'
 import ReactionsBar from '../components/ReactionsBar.jsx'
 import MuteToggle from '../components/MuteToggle.jsx'
 import AchievementToast from '../components/AchievementToast.jsx'
+import DailyToast from '../components/DailyToast.jsx'
+import RoundHistory from '../components/RoundHistory.jsx'
 import { getVariant } from './constants.js'
 import { sounds } from '../audio.js'
-import { recordRound, recordMatch, getSnapshot, recordUnlocks } from '../storage.js'
+import { recordRound, recordMatch, getSnapshot, recordUnlocks, getDailyDoneDate, markDailyDone } from '../storage.js'
 import { evaluate as evaluateAchievements } from './achievements.js'
+import { getTodaysChallenge } from './dailyChallenges.js'
 import { getSocket } from '../socket.js'
 import { colors, font } from '../theme.js'
 
@@ -35,10 +38,22 @@ export default function FriendGame({ session, onExit }) {
   const [myReaction, setMyReaction] = useState(null)
   const [oppReaction, setOppReaction] = useState(null)
   const [unlockedToast, setUnlockedToast] = useState([])
+  const [dailyToast, setDailyToast] = useState(null)
+  const [history, setHistory] = useState([])
+  const matchStreakRef = useRef({ current: 0, best: 0 })
 
   function checkUnlocks() {
     const newly = recordUnlocks(evaluateAchievements(getSnapshot()))
     if (newly.length) setUnlockedToast(newly)
+  }
+
+  function checkDailyChallenge(ctx) {
+    const challenge = getTodaysChallenge()
+    if (getDailyDoneDate() === challenge.date) return
+    if (challenge.check(ctx)) {
+      markDailyDone(challenge.date)
+      setDailyToast(challenge)
+    }
   }
 
   const pendingRevealRef = useRef(null)
@@ -105,6 +120,14 @@ export default function FriendGame({ session, onExit }) {
     else if (data.outcome === 'lose') sounds.lose()
     else sounds.draw()
     recordRound('friend', data.outcome, { choice: data.mine })
+    setHistory((h) => [...h, data.outcome])
+    const ms = matchStreakRef.current
+    if (data.outcome === 'win') {
+      ms.current += 1
+      if (ms.current > ms.best) ms.best = ms.current
+    } else if (data.outcome === 'lose') {
+      ms.current = 0
+    }
 
     const myScore = data.scores[you] || 0
     const oppScore = data.scores[opponentId] || 0
@@ -112,6 +135,11 @@ export default function FriendGame({ session, onExit }) {
       setMatchOutcome('win')
       recordMatch('friend', 'win', { variantId, flawless: oppScore === 0 })
       setTimeout(() => sounds.victory(), 300)
+      checkDailyChallenge({
+        outcome: 'win', mode: 'friend', variantId,
+        playerScore: myScore, opponentScore: oppScore,
+        bestStreakThisMatch: ms.best,
+      })
     } else if (oppScore >= matchLength) {
       setMatchOutcome('lose')
       recordMatch('friend', 'lose', { variantId })
@@ -175,6 +203,7 @@ export default function FriendGame({ session, onExit }) {
     return (
       <>
         <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
+        <DailyToast challenge={dailyToast} onClear={() => setDailyToast(null)} />
       <View style={styles.leftWrap}>
         <Text style={styles.leftTitle}>{oppName.toUpperCase()} LEFT</Text>
         <Text style={styles.leftBody}>
@@ -195,6 +224,7 @@ export default function FriendGame({ session, onExit }) {
     return (
       <>
         <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
+        <DailyToast challenge={dailyToast} onClear={() => setDailyToast(null)} />
       <VictoryScreen
         outcome={matchOutcome}
         scores={{ player: scores[you] || 0, opponent: scores[opponentId] || 0 }}
@@ -215,6 +245,7 @@ export default function FriendGame({ session, onExit }) {
       showsVerticalScrollIndicator={false}
     >
       <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
+      <DailyToast challenge={dailyToast} onClear={() => setDailyToast(null)} />
       <View style={styles.topBar}>
         <Pressable onPress={quit} hitSlop={10} style={styles.backBtn}>
           <Text style={styles.backText}>← Quit</Text>
@@ -236,6 +267,8 @@ export default function FriendGame({ session, onExit }) {
         <ScoreBox label="Round" value={round} accent={colors.purple} />
         <ScoreBox label={oppName} value={scores[opponentId] || 0} accent={colors.red} />
       </View>
+
+      <RoundHistory history={history} />
 
       <View style={styles.cardsRow}>
         <ChoiceCard

@@ -7,10 +7,13 @@ import VictoryScreen from '../components/VictoryScreen.jsx'
 import ReactionsBar from '../components/ReactionsBar.jsx'
 import MuteToggle from '../components/MuteToggle.jsx'
 import AchievementToast from '../components/AchievementToast.jsx'
+import DailyToast from '../components/DailyToast.jsx'
+import RoundHistory from '../components/RoundHistory.jsx'
 import { getVariant } from './constants.js'
 import { sounds } from '../audio.js'
-import { recordRound, recordMatch, getSnapshot, recordUnlocks } from '../storage.js'
+import { recordRound, recordMatch, getSnapshot, recordUnlocks, getDailyDoneDate, markDailyDone } from '../storage.js'
 import { evaluate as evaluateAchievements } from './achievements.js'
+import { getTodaysChallenge } from './dailyChallenges.js'
 import { getSocket } from '../socket.js'
 
 export default function FriendGame({ session, onExit }) {
@@ -33,10 +36,22 @@ export default function FriendGame({ session, onExit }) {
   const [myReaction, setMyReaction] = useState(null)
   const [oppReaction, setOppReaction] = useState(null)
   const [unlockedToast, setUnlockedToast] = useState([])
+  const [dailyToast, setDailyToast] = useState(null)
+  const [history, setHistory] = useState([])
+  const matchStreakRef = useRef({ current: 0, best: 0 })
 
   function checkUnlocks() {
     const newly = recordUnlocks(evaluateAchievements(getSnapshot()))
     if (newly.length) setUnlockedToast(newly)
+  }
+
+  function checkDailyChallenge(ctx) {
+    const challenge = getTodaysChallenge()
+    if (getDailyDoneDate() === challenge.date) return
+    if (challenge.check(ctx)) {
+      markDailyDone(challenge.date)
+      setDailyToast(challenge)
+    }
   }
 
   const pendingRevealRef = useRef(null)
@@ -107,6 +122,14 @@ export default function FriendGame({ session, onExit }) {
     else if (data.outcome === 'lose') sounds.lose()
     else sounds.draw()
     recordRound('friend', data.outcome, { choice: data.mine })
+    setHistory((h) => [...h, data.outcome])
+    const ms = matchStreakRef.current
+    if (data.outcome === 'win') {
+      ms.current += 1
+      if (ms.current > ms.best) ms.best = ms.current
+    } else if (data.outcome === 'lose') {
+      ms.current = 0
+    }
 
     const myScore = data.scores[you] || 0
     const oppScore = data.scores[opponentId] || 0
@@ -114,6 +137,11 @@ export default function FriendGame({ session, onExit }) {
       setMatchOutcome('win')
       recordMatch('friend', 'win', { variantId, flawless: oppScore === 0 })
       setTimeout(() => sounds.victory(), 300)
+      checkDailyChallenge({
+        outcome: 'win', mode: 'friend', variantId,
+        playerScore: myScore, opponentScore: oppScore,
+        bestStreakThisMatch: ms.best,
+      })
     } else if (oppScore >= matchLength) {
       setMatchOutcome('lose')
       recordMatch('friend', 'lose', { variantId })
@@ -177,6 +205,7 @@ export default function FriendGame({ session, onExit }) {
     return (
       <>
         <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
+        <DailyToast challenge={dailyToast} onClear={() => setDailyToast(null)} />
       <div className="flex flex-col items-center gap-6 mt-10">
         <h2 className="font-display text-xl sm:text-2xl text-rose-300 neon-text">
           {oppName.toUpperCase()} LEFT
@@ -201,6 +230,7 @@ export default function FriendGame({ session, onExit }) {
     return (
       <>
         <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
+        <DailyToast challenge={dailyToast} onClear={() => setDailyToast(null)} />
       <VictoryScreen
         outcome={matchOutcome}
         scores={{ player: scores[you] || 0, opponent: scores[opponentId] || 0 }}
@@ -218,6 +248,7 @@ export default function FriendGame({ session, onExit }) {
   return (
     <div className="w-full max-w-4xl flex flex-col items-center gap-6">
       <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
+      <DailyToast challenge={dailyToast} onClear={() => setDailyToast(null)} />
       <header className="w-full flex flex-col items-center gap-4">
         <div className="flex items-center justify-between w-full">
           <button
@@ -243,6 +274,8 @@ export default function FriendGame({ session, onExit }) {
           <ScoreBox label="Round" value={round} accent="text-purple-300" />
           <ScoreBox label={oppName} value={scores[opponentId] || 0} accent="text-rose-300" />
         </div>
+
+        <RoundHistory history={history} />
       </header>
 
       <section className="w-full grid grid-cols-2 gap-4 sm:gap-10 items-end mt-2">

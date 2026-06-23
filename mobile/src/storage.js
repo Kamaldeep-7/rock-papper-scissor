@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 const NAME_KEY = 'rps:name'
 const STATS_PREFIX = 'rps:stats:'
 const ACH_KEY = 'rps:achievements'
+const DAILY_KEY = 'rps:dailyDone'
 
 const DEFAULT_STATS = {
   wins: 0, losses: 0, draws: 0,
@@ -20,7 +21,7 @@ function migrate(s) {
   return s
 }
 
-const cache = { name: '', stats: {}, achievements: [] }
+const cache = { name: '', stats: {}, achievements: [], dailyDone: '' }
 let hydrated = false
 
 export async function hydrate() {
@@ -35,10 +36,12 @@ export async function hydrate() {
     }
     const achRaw = await AsyncStorage.getItem(ACH_KEY)
     cache.achievements = achRaw ? JSON.parse(achRaw) : []
+    cache.dailyDone = (await AsyncStorage.getItem(DAILY_KEY)) || ''
   } catch {
     cache.stats.cpu = { ...DEFAULT_STATS }
     cache.stats.friend = { ...DEFAULT_STATS }
     cache.achievements = []
+    cache.dailyDone = ''
   }
   hydrated = true
 }
@@ -135,4 +138,13 @@ export function recordUnlocks(ids) {
   cache.achievements = next
   AsyncStorage.setItem(ACH_KEY, JSON.stringify(next)).catch(() => {})
   return newOnes
+}
+
+export function getDailyDoneDate() {
+  return cache.dailyDone || ''
+}
+
+export function markDailyDone(dateKey) {
+  cache.dailyDone = dateKey
+  AsyncStorage.setItem(DAILY_KEY, dateKey).catch(() => {})
 }

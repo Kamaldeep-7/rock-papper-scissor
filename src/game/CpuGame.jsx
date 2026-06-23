@@ -6,16 +6,20 @@ import Countdown from '../components/Countdown.jsx'
 import VictoryScreen from '../components/VictoryScreen.jsx'
 import MuteToggle from '../components/MuteToggle.jsx'
 import AchievementToast from '../components/AchievementToast.jsx'
+import DailyToast from '../components/DailyToast.jsx'
+import RoundHistory from '../components/RoundHistory.jsx'
 import { getVariant, decide } from './constants.js'
 import { createCpuBrain } from './cpu.js'
 import { sounds } from '../audio.js'
-import { recordRound, recordMatch, getSnapshot, recordUnlocks } from '../storage.js'
+import { recordRound, recordMatch, getSnapshot, recordUnlocks, getDailyDoneDate, markDailyDone } from '../storage.js'
 import { evaluate as evaluateAchievements } from './achievements.js'
+import { getTodaysChallenge } from './dailyChallenges.js'
 
 export default function CpuGame({ settings, onExit }) {
   const variant = useMemo(() => getVariant(settings.variantId), [settings.variantId])
+  const difficulty = settings.difficulty || 'medium'
   const brainRef = useRef(null)
-  if (!brainRef.current) brainRef.current = createCpuBrain(variant.id)
+  if (!brainRef.current) brainRef.current = createCpuBrain(variant.id, difficulty)
 
   const [phase, setPhase] = useState('picking')
   const [playerChoice, setPlayerChoice] = useState(null)
@@ -26,10 +30,22 @@ export default function CpuGame({ settings, onExit }) {
   const [round, setRound] = useState(1)
   const [matchOutcome, setMatchOutcome] = useState(null)
   const [unlockedToast, setUnlockedToast] = useState([])
+  const [dailyToast, setDailyToast] = useState(null)
+  const [history, setHistory] = useState([])
+  const matchStreakRef = useRef({ current: 0, best: 0 })
 
   function checkUnlocks() {
     const newly = recordUnlocks(evaluateAchievements(getSnapshot()))
     if (newly.length) setUnlockedToast(newly)
+  }
+
+  function checkDailyChallenge(ctx) {
+    const challenge = getTodaysChallenge()
+    if (getDailyDoneDate() === challenge.date) return
+    if (challenge.check(ctx)) {
+      markDailyDone(challenge.date)
+      setDailyToast(challenge)
+    }
   }
 
   const resultText = useMemo(() => {
@@ -66,6 +82,14 @@ export default function CpuGame({ settings, onExit }) {
     else if (outcome === 'lose') sounds.lose()
     else sounds.draw()
     recordRound('cpu', outcome, { choice: playerChoice })
+    setHistory((h) => [...h, outcome])
+    const ms = matchStreakRef.current
+    if (outcome === 'win') {
+      ms.current += 1
+      if (ms.current > ms.best) ms.best = ms.current
+    } else if (outcome === 'lose') {
+      ms.current = 0
+    }
     setScores((s) => {
       const next = {
         player: s.player + (outcome === 'win' ? 1 : 0),
@@ -76,6 +100,11 @@ export default function CpuGame({ settings, onExit }) {
         setMatchOutcome('win')
         recordMatch('cpu', 'win', { variantId: settings.variantId, flawless: next.cpu === 0 })
         setTimeout(() => sounds.victory(), 300)
+        checkDailyChallenge({
+          outcome: 'win', mode: 'cpu', variantId: settings.variantId,
+          difficulty, playerScore: next.player, opponentScore: next.cpu,
+          bestStreakThisMatch: ms.best,
+        })
       } else if (next.cpu >= settings.matchLength) {
         setMatchOutcome('lose')
         recordMatch('cpu', 'lose')
@@ -105,8 +134,10 @@ export default function CpuGame({ settings, onExit }) {
     setScores({ player: 0, cpu: 0, draws: 0 })
     setRound(1)
     setMatchOutcome(null)
+    setHistory([])
+    matchStreakRef.current = { current: 0, best: 0 }
     setPhase('picking')
-    brainRef.current = createCpuBrain(variant.id)
+    brainRef.current = createCpuBrain(variant.id, difficulty)
   }
 
   useEffect(() => {
@@ -129,6 +160,7 @@ export default function CpuGame({ settings, onExit }) {
     return (
       <>
         <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
+        <DailyToast challenge={dailyToast} onClear={() => setDailyToast(null)} />
         <VictoryScreen
           outcome={matchOutcome}
           scores={{ player: scores.player, opponent: scores.cpu }}
@@ -145,6 +177,7 @@ export default function CpuGame({ settings, onExit }) {
   return (
     <div className="w-full max-w-4xl flex flex-col items-center gap-6">
       <AchievementToast ids={unlockedToast} onClear={() => setUnlockedToast([])} />
+      <DailyToast challenge={dailyToast} onClear={() => setDailyToast(null)} />
       <header className="w-full flex flex-col items-center gap-4">
         <div className="flex items-center justify-between w-full">
           <button
@@ -154,7 +187,7 @@ export default function CpuGame({ settings, onExit }) {
             ← Menu
           </button>
           <span className="text-xs sm:text-sm font-display tracking-widest uppercase text-purple-300">
-            VS CPU · First to {settings.matchLength}
+            VS CPU · {difficulty.toUpperCase()} · First to {settings.matchLength}
           </span>
           <MuteToggle />
         </div>
@@ -171,6 +204,8 @@ export default function CpuGame({ settings, onExit }) {
           <ScoreBox label="CPU" value={scores.cpu} accent="text-rose-300" />
           <ScoreBox label="Draws" value={scores.draws} accent="text-amber-300" />
         </div>
+
+        <RoundHistory history={history} />
       </header>
 
       <section className="w-full grid grid-cols-2 gap-4 sm:gap-10 items-end mt-2">

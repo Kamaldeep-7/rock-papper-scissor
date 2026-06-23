@@ -1,6 +1,7 @@
 const NAME_KEY = 'rps:name'
 const STATS_PREFIX = 'rps:stats:'
 const ACH_KEY = 'rps:achievements'
+const DAILY_KEY = 'rps:dailyDone'
 
 export function getName() {
   try { return localStorage.getItem(NAME_KEY) || '' } catch { return '' }
@@ -111,4 +112,12 @@ export function recordUnlocks(ids) {
   const next = [...cur, ...newOnes.map((id) => ({ id, time: Date.now() }))]
   try { localStorage.setItem(ACH_KEY, JSON.stringify(next)) } catch {}
   return newOnes
+}
+
+export function getDailyDoneDate() {
+  try { return localStorage.getItem(DAILY_KEY) || '' } catch { return '' }
+}
+
+export function markDailyDone(dateKey) {
+  try { localStorage.setItem(DAILY_KEY, dateKey) } catch {}
 }

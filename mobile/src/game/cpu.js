@@ -1,6 +1,12 @@
 import { getVariant } from './constants.js'
 
-export function createCpuBrain(variantId = 'classic') {
+export const DIFFICULTIES = [
+  { id: 'easy', label: 'Easy', desc: 'Random picks · for beginners' },
+  { id: 'medium', label: 'Medium', desc: 'Light pattern reading' },
+  { id: 'hard', label: 'Hard', desc: 'Full smart brain' },
+]
+
+export function createCpuBrain(variantId = 'classic', difficulty = 'hard') {
   const variant = getVariant(variantId)
   const history = []
   const transitions = new Map()
@@ -27,16 +33,25 @@ export function createCpuBrain(variantId = 'classic') {
     return pick
   }
 
-  function predict() {
+  function smartGuess() {
     if (history.length < 3) return random()
     const last = history[history.length - 1]
     const trans = transitions.get(last)
     const predicted = (trans && trans.size && topPick(trans)) || topPick(freqs)
     if (!predicted) return random()
-    return Math.random() < 0.7 ? counterOf(predicted) : random()
+    return counterOf(predicted)
+  }
+
+  function predict() {
+    if (difficulty === 'easy') return random()
+    if (difficulty === 'medium') {
+      return Math.random() < 0.45 ? smartGuess() : random()
+    }
+    return Math.random() < 0.7 ? smartGuess() : random()
   }
 
   function record(playerPick) {
+    if (difficulty === 'easy') return
     if (history.length > 0) {
       const last = history[history.length - 1]
       if (!transitions.has(last)) transitions.set(last, new Map())
