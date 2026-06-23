@@ -1,0 +1,20 @@
+{
+  "cli": {
+    "version": ">= 7.0.0"
+  },
+  "build": {
+    "preview": {
+      "node": "20.18.0",
+      "android": {
+        "buildType": "apk"
+      },
+      "distribution": "internal"
+    },
+    "production": {
+      "node": "20.18.0",
+      "android": {
+        "buildType": "apk"
+      }
+    }
+  }
+}

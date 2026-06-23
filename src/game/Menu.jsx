@@ -83,6 +83,19 @@ export default function Menu({ onPick }) {
       </div>
 
       <StatsRow />
+
+      <a
+        href="/downloads/rps.apk"
+        download
+        className="mt-6 px-6 py-3 rounded-2xl font-display text-xs sm:text-sm tracking-widest uppercase
+          bg-gradient-to-br from-emerald-600/40 to-cyan-600/40
+          border-2 border-emerald-400/60 hover:border-emerald-300
+          hover:scale-105 active:scale-95 transition-transform text-white text-center
+          flex items-center gap-2 no-underline"
+      >
+        <span>📱</span>
+        <span>Download Android APK</span>
+      </a>
     </div>
   )
 }

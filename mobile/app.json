@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "RPS",
+    "slug": "rps",
+    "owner": "kamaldeep-7s-team",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f0729"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hastagfuggi.rps"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f0729"
+      },
+      "package": "com.hastagfuggi.rps"
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "99f4f11e-b81b-485a-9384-f34946384589"
+      }
+    }
+  }
+}

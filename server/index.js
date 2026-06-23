@@ -45,6 +45,15 @@ app.use(cors())
 app.get('/health', (_req, res) => res.json({ ok: true }))
 
 const distPath = path.join(__dirname, '..', 'dist')
+const publicPath = path.join(__dirname, '..', 'public')
+app.use('/downloads', express.static(publicPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.apk')) {
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive')
+      res.setHeader('Content-Disposition', 'attachment; filename="rps.apk"')
+    }
+  },
+}))
 app.use(express.static(distPath))
 app.get('*', (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'))
